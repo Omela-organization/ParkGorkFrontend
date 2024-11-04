@@ -1,0 +1,18 @@
+[
+  {
+    "status": "Просмотрено",
+    "date": "2024-11-04",
+    "violationType": "Нарушение парковки",
+    "coordinates": "37.60141, 55.72844",
+    "photo": "photo1.jpg",
+    "checkStatus": "Проверено"
+  },
+  {
+    "status": "Не просмотрено",
+    "date": "2024-11-02",
+    "violationType": "Незаконная реклама",
+    "coordinates": "37.60150, 55.72850",
+    "photo": "photo2.jpg",
+    "checkStatus": "Не проверено"
+  }
+]
