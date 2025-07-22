@@ -2,18 +2,23 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import AuthLayout from '@/layouts/AuthLayout.vue'
 
-import AdminPanel from '@/pages/AdminPanel.vue'
+import AdminPanel from '@/pages/admin/AdminPanel.vue'
 import EcoAnalysis from '@/pages/EcoAnalysis.vue'
 import WikiFill from '@/pages/WikiFill.vue'
 import UsersPage from '@/pages/Users.vue'
 import NewsEditor from '@/pages/NewsEditor.vue'
-import LoginPage from '@/pages/Login.vue'
+import LoginPage from '@/pages/LoginPage.vue'
 
 const routes = [
   {
     path: '/',
     component: AdminLayout,
+    meta: { requiresAuth: true },
     children: [
+      {
+        path: '',
+        name: 'HomeByRole',
+      },
       {
         path: 'admin',
         name: 'AdminPanel',
@@ -44,27 +49,13 @@ const routes = [
         component: NewsEditor,
         meta: { label: 'Редактирование Новостной Ленты', roles: ['pr'] },
       },
-      {
-        path: '',
-        name: 'RootRedirect',
-        redirect: (to) => {
-          const { role } = JSON.parse(localStorage.getItem('auth') || '{}')
-          const roleLanding = {
-            admin: 'AdminPanel',
-            ecologist: 'EcoAnalysis',
-            pr: 'Users',
-          }
-          return { name: roleLanding[role] || 'Login' }
-        },
-      },
     ],
   },
   {
     path: '/login',
-    name: 'Login',
     component: AuthLayout,
-    children: [{ path: '', component: LoginPage }],
-    meta: { roles: ['guest'] },
+    children: [{ path: '', name: 'Login', component: LoginPage }],
+    meta: { guestOnly: true },
   },
   {
     path: '/:pathMatch(.*)*',
