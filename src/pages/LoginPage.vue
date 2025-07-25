@@ -13,6 +13,7 @@ async function submit() {
   error.value = ''
   try {
     await auth.login(email.value, password.value)
+    await auth.fetchUserAndRole()
     await router.push('/')
   } catch (e) {
     error.value = `Неверный логин или пароль ${e}`
@@ -22,7 +23,7 @@ async function submit() {
 
 <template>
   <div class="max-w-sm w-full bg-white shadow-md rounded-xl p-6">
-    <h2 class="text-xl font-semibold mb-4 text-center">Вход администратора</h2>
+    <h2 class="text-xl font-semibold mb-4 text-center">Вход</h2>
 
     <form @submit.prevent="submit" class="space-y-4">
       <div>

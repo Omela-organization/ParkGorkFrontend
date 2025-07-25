@@ -7,7 +7,7 @@ import {
   API_BASE_STORAGE,
   API_PREFIX,
   REQUEST_TIMEOUT,
-} from '@/config/settings'
+} from '@/utils/settings'
 
 function createClient(baseURL) {
   const client = axios.create({
