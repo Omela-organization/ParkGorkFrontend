@@ -5,8 +5,12 @@ import router from '@/router'
 
 import '@/assets/main.css'
 
-const pinia = createPinia()
 
+const pinia = createPinia()
+const app = createApp(App).use(pinia)
+
+import { useAuth } from '@/stores/auth'
+useAuth().init()
 import '@/router/guards'
 
-createApp(App).use(pinia).use(router).mount('#app')
+app.use(router).mount('#app')
