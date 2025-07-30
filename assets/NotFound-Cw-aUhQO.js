@@ -1,1 +1,0 @@
-import{_ as o,c as t,o as e}from"./index-BXNj0Fmb.js";const c={},n={class:"text-2xl font-bold"};function s(r,_){return e(),t("h2",n,"Страница не найдена")}const f=o(c,[["render",s]]);export{f as default};
