@@ -1,6 +1,6 @@
-const API_HOST = import.meta.env.VITE_API_URL
+const API_HOST = import.meta.env.VITE_API_URL || ''
 
-const withPort = (port) => `${API_HOST}:${port}`
+const withPort = (port) => (port ? `${API_HOST}:${port}` : API_HOST)
 
 export const API_BASE_AUTH = withPort(import.meta.env.VITE_API_AUTH_PORT)
 export const API_BASE_ECO = withPort(import.meta.env.VITE_API_ECO_PORT)
