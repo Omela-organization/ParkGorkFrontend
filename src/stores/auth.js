@@ -40,15 +40,21 @@ export const useAuth = defineStore('auth', {
       }
     },
     async fetchUserAndRole() {
-      // eslint-disable-next-line no-useless-catch
       try {
         const payload = parseJwt(this.accessToken)
         const user = await fetchUser(payload.user_id)
-        this.userRole = await fetchRole(user.role_id)
+        localStorage.setItem('user', JSON.stringify(user))
+        if (user?.role_id) {
+          this.userRole = await fetchRole(user.role_id)
+        } else {
+          this.userRole = { name: payload.role }
+        }
         this.user = user
         localStorage.setItem('user', JSON.stringify(user))
         localStorage.setItem('userRole', JSON.stringify(this.userRole))
       } catch (e) {
+        console.error('[fetchUserAndRole] failed', e)
+        this.userRole = { name: 'guest' }
         throw e
       }
     },
