@@ -16,7 +16,9 @@ export const forgotPassword = (email) =>
 
 export const resetPassword = (oldPassword, newPassword) =>
   authApi
-    .post('/authorization/reset-password', null, { params: { old_password: oldPassword, new_password: newPassword } })
+    .post('/authorization/reset-password', null, {
+      params: { old_password: oldPassword, new_password: newPassword },
+    })
     .then((r) => r.data)
 
 export const changeRole = (userId, role_id) =>
@@ -26,13 +28,11 @@ export const changeRole = (userId, role_id) =>
 
 export const fetchProfiles = () => authApi.get('/profiles/').then((r) => r.data)
 export const createProfile = (payload) => authApi.post('/profiles/', payload).then((r) => r.data)
-export const fetchProfile = (profileId) =>
-  authApi.get(`/profiles/${profileId}`).then((r) => r.data)
+export const fetchProfile = (profileId) => authApi.get(`/profiles/${profileId}`).then((r) => r.data)
 export const updateProfile = (profileId, payload) =>
   authApi.put(`/profiles/${profileId}`, payload).then((r) => r.data)
 export const deleteProfile = (profileId) => authApi.delete(`/profiles/${profileId}`)
-export const getProfileByUserId = (userId) =>
-  authApi.get(`/profiles/${userId}`).then((r) => r.data)
+export const getProfileByUserId = (userId) => authApi.get(`/profiles/${userId}`).then((r) => r.data)
 export const fetchProfileInfo = (profileId) =>
   authApi.get(`/profiles/info/${profileId}`).then((r) => r.data)
 
