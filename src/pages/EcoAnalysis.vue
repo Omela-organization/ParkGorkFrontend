@@ -23,7 +23,7 @@ const rows = computed(() =>
     ...p,
     typeName: types.value.find((t) => t.id === p.type_incident_id)?.name || '—',
     statusName: statuses.value.find((s) => s.id === p.status_id)?.name || '—',
-    coords: `${Number(p.latitude).toFixed(6)}, ${Number(p.longitude).toFixed(6)}`,
+    coords: `${Number(p.longitude).toFixed(6)}, ${Number(p.latitude).toFixed(6)}`,
     isViewed: viewed.value.has(p.id),
   })),
 )
@@ -98,8 +98,6 @@ onMounted(load)
             <th class="px-3 py-2">Координаты</th>
             <th class="px-3 py-2">Фотографии</th>
             <th class="px-3 py-2">Статус проверки</th>
-            <th class="px-3 py-2">Карта</th>
-            <th class="px-3 py-2">Просмотрено</th>
             <th class="px-3 py-2">Отчёт (PDF)</th>
           </tr>
         </thead>
@@ -110,7 +108,7 @@ onMounted(load)
             class="border-t hover:bg-gray-50 cursor-pointer"
             @click="onRowClick(p)"
           >
-            <td class="px-3 py-2 text-gray-700">—</td>
+            <td class="px-3 py-2 font-semibold">25.08.2025</td>
             <td class="px-3 py-2">{{ p.typeName }}</td>
             <td class="px-3 py-2 font-mono">{{ p.coords }}</td>
             <td class="px-3 py-2">
@@ -122,19 +120,7 @@ onMounted(load)
               </button>
             </td>
             <td class="px-3 py-2">{{ p.statusName }}</td>
-            <td class="px-3 py-2">
-              <button
-                @click.stop="focusOnMap(p)"
-                class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-              >
-                Показать
-              </button>
-            </td>
-            <td class="px-3 py-2">
-              <span :class="p.isViewed ? 'text-green-600' : 'text-gray-400'">{{
-                p.isViewed ? 'Просмотрено' : '—'
-              }}</span>
-            </td>
+
             <td class="px-3 py-2">
               <button
                 @click.stop="printReport(p)"
