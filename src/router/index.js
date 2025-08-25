@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import AdminLayout from '@/layouts/AdminLayout.vue'
+import BaseLayout from '@/layouts/BaseLayout.vue'
 import AuthLayout from '@/layouts/AuthLayout.vue'
 
 import AdminPanel from '@/pages/admin/AdminPanel.vue'
@@ -12,7 +12,7 @@ import LoginPage from '@/pages/LoginPage.vue'
 const routes = [
   {
     path: '/',
-    component: AdminLayout,
+    component: BaseLayout,
     meta: { requiresAuth: true },
     children: [
       {
