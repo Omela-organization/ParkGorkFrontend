@@ -126,8 +126,8 @@ async function init() {
   try {
     await loadYandexMaps()
     map = new window.ymaps.Map(mapRoot.value, {
-      center: [55.73, 37.62],
-      zoom: 12,
+      center: [55.72936, 37.602431],
+      zoom: 16,
       controls: ['zoomControl', 'typeSelector', 'geolocationControl'],
     })
     drawPoints()
