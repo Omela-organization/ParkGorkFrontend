@@ -74,7 +74,7 @@ function loadYandexMaps() {
 
 function clearMarkers() {
   if (!map || !markers.length) return
-  markers.forEach((m) => map.removeChild(m))
+  markers.forEach((pm) => map.geoObjects.remove(pm))
   markers = []
 }
 
@@ -82,44 +82,20 @@ function drawPoints() {
   if (!map) return
   clearMarkers()
   props.points.forEach((p) => {
-    const el = document.createElement('div')
-    el.className = 'w-3 h-3 rounded-full bg-red-600 border-2 border-white shadow'
-    // ВАЖНО: v3 ждёт [долгота, широта]
-    const marker = new ymaps3.YMapMarker(
-      { coordinates: [Number(p.longitude), Number(p.latitude)] },
-      el,
+    // ВАЖНО: v2.1 ждёт [широта, долгота]
+    const pm = new window.ymaps.Placemark(
+      [Number(p.longitude), Number(p.latitude)],
+      { balloonContentHeader: p.title || `Эко-проблема #${p.id}` },
+      { preset: 'islands#redIcon' },
     )
-    markers.push(marker)
-    map.addChild(marker)
+    markers.push(pm)
+    map.geoObjects.add(pm)
   })
 }
 
-function fitToPoints() {
-  if (!map || !markers.length) return
-  let minLon = 180,
-    minLat = 90
-  let maxLon = -180,
-    maxLat = -90
-  props.points.forEach((p) => {
-    const lon = Number(p.longitude),
-      lat = Number(p.latitude)
-    if (isFinite(lon) && isFinite(lat)) {
-      minLon = Math.min(minLon, lon)
-      minLat = Math.min(minLat, lat)
-      maxLon = Math.max(maxLon, lon)
-      maxLat = Math.max(maxLat, lat)
-    }
-  })
-  if (minLon <= maxLon && minLat <= maxLat) {
-    map.update({
-      location: {
-        bounds: [
-          [minLon, minLat],
-          [maxLon, maxLat],
-        ],
-      },
-    })
-  }
+function focusOn(problem) {
+  if (!map || !problem) return
+  map.setCenter([Number(problem.longitude), Number(problem.latitude)], 18, { duration: 300 })
 }
 
 async function init() {
@@ -131,7 +107,6 @@ async function init() {
       controls: ['zoomControl', 'typeSelector', 'geolocationControl'],
     })
     drawPoints()
-    fitToPoints()
   } catch (e) {
     console.error('Yandex Maps load error:', e)
     mapError.value = 'Карта не загрузилась. Проверь API-ключ/ограничения и блокировщики.'
@@ -145,17 +120,9 @@ watch(
   () => {
     if (!map) return
     drawPoints()
-    fitToPoints()
   },
   { deep: true },
 )
-
-function focusOn(problem) {
-  if (!map || !problem) return
-  const lon = Number(problem.longitude)
-  const lat = Number(problem.latitude)
-  map.update({ location: { center: [lon, lat], zoom: 16 }, duration: 300 })
-}
 
 defineExpose({ focusOn })
 </script>
