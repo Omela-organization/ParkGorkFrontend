@@ -1,13 +1,13 @@
 <script setup>
 import { ref, onMounted, computed, nextTick } from 'vue'
 import EcoProblemMap from '@/components/EcoProblemMap.vue'
-import {
-  fetchEcoProblems,
-  fetchEcoProblemById,
-  fetchStatuses,
-  fetchTypeIncidents,
-} from '@/api/eco'
+import { fetchEcoProblems, fetchEcoProblemById, fetchStatuses, fetchTypeIncidents } from '@/api/eco'
+import { ecoApi } from '@/api/core'
+import { useAuth } from '@/stores/auth'
 import { YANDEX_MAPS_API_KEY } from '@/utils/settings.js'
+
+const auth = useAuth()
+const isAdmin = computed(() => auth.role === 'admin')
 
 const loading = ref(false)
 const problems = ref([])
@@ -16,34 +16,18 @@ const types = ref([])
 
 const detailsCache = ref(new Map())
 const photosOpen = ref(false)
+const photosLoading = ref(false)
 const selectedPhotos = ref([])
 
 const mapRef = ref(null)
 
-const viewed = ref(new Set(JSON.parse(localStorage.getItem('viewedEcoProblems') || '[]')))
-function markViewed(id) {
-  if (!viewed.value.has(id)) {
-    viewed.value.add(id)
-    localStorage.setItem('viewedEcoProblems', JSON.stringify([...viewed.value]))
-  }
-}
-
 function formatDate(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
-  return d.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
-
-const typeNameById = computed(() =>
-  Object.fromEntries(types.value.map((t) => [t.id, t.text])),
-)
-const statusNameById = computed(() =>
-  Object.fromEntries(statuses.value.map((s) => [s.id, s.text])),
-)
+const typeNameById = computed(() => Object.fromEntries(types.value.map((t) => [t.id, t.text])))
+const statusNameById = computed(() => Object.fromEntries(statuses.value.map((s) => [s.id, s.text])))
 
 function coordsPair(p) {
   const lat = Number(p.longitude)
@@ -80,7 +64,6 @@ async function copyText(text) {
       ta.style.position = 'fixed'
       ta.style.opacity = '0'
       document.body.appendChild(ta)
-      ta.focus()
       ta.select()
       const ok = document.execCommand('copy')
       document.body.removeChild(ta)
@@ -90,25 +73,21 @@ async function copyText(text) {
     }
   }
 }
+function showToast(t) {
+  toast.value = { show: true, text: t }
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => (toast.value.show = false), 1500)
+}
 async function copyCoordsLink(p) {
   const [lat, lon] = coordsPair(p)
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return
-  const link = buildYandexLink(lat, lon)
-  const ok = await copyText(link)
+  const ok = await copyText(buildYandexLink(lat, lon))
   showToast(ok ? 'Ссылка на карту скопирована' : 'Не удалось скопировать')
-}
-function showToast(text) {
-  toast.value = { show: true, text }
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value.show = false), 1600)
 }
 
 const sortedProblems = computed(() =>
-  [...problems.value].sort(
-    (a, b) => new Date(b.created_at) - new Date(a.created_at),
-  ),
+  [...problems.value].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
 )
-
 const rows = computed(() =>
   sortedProblems.value.map((p) => ({
     ...p,
@@ -116,7 +95,6 @@ const rows = computed(() =>
     typeName: typeNameById.value[p.type_incident_id] ?? '—',
     statusName: statusNameById.value[p.status_id] ?? '—',
     coords: coordsString(p),
-    isViewed: viewed.value.has(p.id),
   })),
 )
 
@@ -131,27 +109,28 @@ async function load() {
     problems.value = ps ?? []
     statuses.value = ss ?? []
     types.value = ts ?? []
-  } catch (e) {
-    console.error('Failed to load eco-analysis data', e)
   } finally {
     loading.value = false
   }
 }
 
 async function openPhotos(p) {
+  photosLoading.value = true
+  selectedPhotos.value = []
   try {
     if (!detailsCache.value.has(p.id)) {
       const full = await fetchEcoProblemById(p.id)
       detailsCache.value.set(p.id, full)
     }
     selectedPhotos.value =
-      detailsCache.value.get(p.id)?.files
-        ?.map((f) => f.storage?.url)
+      detailsCache.value
+        .get(p.id)
+        ?.files?.map((f) => f.storage?.url)
         .filter(Boolean) || []
-  } catch (e) {
-    console.error('Failed to load photos', e)
+  } catch {
     selectedPhotos.value = []
   } finally {
+    photosLoading.value = false
     photosOpen.value = true
   }
 }
@@ -159,14 +138,76 @@ async function openPhotos(p) {
 function focusOnMap(p) {
   mapRef.value?.focusOn(p)
 }
-
 function onRowClick(p) {
-  markViewed(p.id)
   focusOnMap(p)
 }
 
-const printingProblem = ref(null)
+const savingInline = ref(new Set())
+async function updateField(id, patch) {
+  try {
+    savingInline.value.add(id)
+    await ecoApi.put(`/eco_problems/update/${id}`, patch)
+    const i = problems.value.findIndex((x) => x.id === id)
+    if (i !== -1) problems.value[i] = { ...problems.value[i], ...patch }
+  } catch {
+    showToast('Не удалось сохранить')
+  } finally {
+    savingInline.value.delete(id)
+  }
+}
 
+const editRowId = ref(null)
+const draft = ref(null)
+function startEditRow(p) {
+  editRowId.value = p.id
+  const [lat, lon] = coordsPair(p)
+  draft.value = {
+    id: p.id,
+    type_incident_id: p.type_incident_id,
+    status_id: p.status_id,
+    is_seen: !!p.is_seen,
+    lat: lat.toFixed(6),
+    lon: lon.toFixed(6),
+  }
+}
+function cancelEditRow() {
+  editRowId.value = null
+  draft.value = null
+}
+async function saveEditRow() {
+  const id = draft.value.id
+  const lat = Number(draft.value.lat)
+  const lon = Number(draft.value.lon)
+  const payload = {
+    type_incident_id: draft.value.type_incident_id,
+    status_id: draft.value.status_id,
+    is_seen: !!draft.value.is_seen,
+    // назад кладём в «перекрёстные» поля
+    longitude: Number.isFinite(lat) ? String(lat) : undefined,
+    latitude: Number.isFinite(lon) ? String(lon) : undefined,
+  }
+  try {
+    await ecoApi.put(`/eco_problems/update/${id}`, payload)
+    const i = problems.value.findIndex((x) => x.id === id)
+    if (i !== -1) problems.value[i] = { ...problems.value[i], ...payload }
+    showToast('Сохранено')
+    cancelEditRow()
+  } catch {
+    showToast('Не удалось сохранить')
+  }
+}
+async function removeRow(id) {
+  if (!confirm('Удалить запись?')) return
+  try {
+    await ecoApi.delete(`/eco_problems/delete/${id}`)
+    problems.value = problems.value.filter((x) => x.id !== id)
+    showToast('Удалено')
+  } catch {
+    showToast('Не удалось удалить')
+  }
+}
+
+const printingProblem = ref(null)
 function buildStaticMapUrl({ lat, lon, zoom = 17, size = '720,420' }) {
   const params = new URLSearchParams({
     lang: 'ru_RU',
@@ -179,7 +220,6 @@ function buildStaticMapUrl({ lat, lon, zoom = 17, size = '720,420' }) {
   if (YANDEX_MAPS_API_KEY) params.set('apikey', YANDEX_MAPS_API_KEY)
   return `https://static-maps.yandex.ru/1.x/?${params.toString()}`
 }
-
 const printMapUrl = computed(() => {
   const p = printingProblem.value
   if (!p) return ''
@@ -187,17 +227,15 @@ const printMapUrl = computed(() => {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return ''
   return buildStaticMapUrl({ lat, lon })
 })
-
 async function printReport(p) {
   printingProblem.value = p
   await nextTick()
   const img = document.getElementById('printMapImg')
-  if (img && !img.complete) {
+  if (img && !img.complete)
     await new Promise((res) => {
       img.onload = res
       img.onerror = res
     })
-  }
   window.print()
 }
 
@@ -211,61 +249,150 @@ onMounted(load)
       <span v-if="loading" class="text-sm text-gray-500">Загрузка…</span>
     </header>
 
-    <!-- интерактивная карта -->
     <EcoProblemMap :points="problems" ref="mapRef" class="interactive-map" />
 
     <div class="overflow-auto rounded-xl border border-gray-200 bg-white">
       <table class="min-w-full text-sm">
         <thead class="bg-gray-50 sticky top-0">
-        <tr class="text-left">
-          <th class="px-3 py-2">Дата</th>
-          <th class="px-3 py-2">Тип нарушения</th>
-          <th class="px-3 py-2">Координаты</th>
-          <th class="px-3 py-2">Фотографии</th>
-          <th class="px-3 py-2">Статус проверки</th>
-          <th class="px-3 py-2">Отчёт (PDF)</th>
-        </tr>
+          <tr class="text-left">
+            <th class="px-3 py-2">Дата</th>
+            <th class="px-3 py-2">Тип нарушения</th>
+            <th class="px-3 py-2">Координаты</th>
+            <th class="px-3 py-2">Фотографии</th>
+            <th class="px-3 py-2">Статус проверки</th>
+            <th class="px-3 py-2">Просмотрено</th>
+            <th class="px-3 py-2">Отчёт / Действия</th>
+          </tr>
         </thead>
+
         <tbody>
-        <tr
-          v-for="p in rows"
-          :key="p.id"
-          class="border-t hover:bg-gray-50 cursor-pointer"
-          @click="onRowClick(p)"
-        >
-          <td class="px-3 py-2 font-semibold whitespace-nowrap">
-            {{ p.createdAt }}
-          </td>
-          <td class="px-3 py-2">{{ p.typeName }}</td>
+          <tr
+            v-for="p in rows"
+            :key="p.id"
+            class="border-t hover:bg-gray-50 cursor-pointer"
+            @click="onRowClick(p)"
+          >
+            <td class="px-3 py-2 font-semibold whitespace-nowrap">{{ p.createdAt }}</td>
 
-          <td class="px-3 py-2">
-            <button
-              class="font-mono text-blue-600 hover:underline"
-              title="Скопировать ссылку на это место"
-              @click.stop="copyCoordsLink(p)"
-            >
-              {{ p.coords }}
-            </button>
-          </td>
+            <td class="px-3 py-2">
+              <template v-if="isAdmin && editRowId === p.id">
+                <select
+                  v-model="draft.type_incident_id"
+                  class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-44"
+                >
+                  <option v-for="t in types" :key="t.id" :value="t.id">{{ t.text }}</option>
+                </select>
+              </template>
+              <template v-else>
+                {{ p.typeName }}
+              </template>
+            </td>
 
-          <td class="px-3 py-2">
-            <button
-              @click.stop="openPhotos(p)"
-              class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-            >
-              Показать
-            </button>
-          </td>
-          <td class="px-3 py-2">{{ p.statusName }}</td>
-          <td class="px-3 py-2">
-            <button
-              @click.stop="printReport(p)"
-              class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-            >
-              Скачать PDF-отчёт
-            </button>
-          </td>
-        </tr>
+            <!-- Координаты -->
+            <td class="px-3 py-2">
+              <template v-if="isAdmin && editRowId === p.id">
+                <div class="flex gap-2">
+                  <input
+                    v-model="draft.lat"
+                    class="text-sm bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-200 w-32"
+                    placeholder="Широта (55.x)"
+                  />
+                  <input
+                    v-model="draft.lon"
+                    class="text-sm bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-200 w-32"
+                    placeholder="Долгота (37.x)"
+                  />
+                </div>
+              </template>
+              <template v-else>
+                <button
+                  class="font-mono text-blue-600 hover:underline"
+                  title="Скопировать ссылку на это место"
+                  @click.stop="copyCoordsLink(p)"
+                >
+                  {{ p.coords }}
+                </button>
+              </template>
+            </td>
+
+            <!-- фото -->
+            <td class="px-3 py-2">
+              <button
+                @click.stop="openPhotos(p)"
+                class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
+              >
+                Показать
+              </button>
+            </td>
+
+            <td class="px-3 py-2">
+              <select
+                :value="p.status_id"
+                :disabled="savingInline.has(p.id)"
+                class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-44"
+                @change.stop="updateField(p.id, { status_id: $event.target.value })"
+                title="Изменить статус"
+              >
+                <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.text }}</option>
+              </select>
+            </td>
+
+            <td class="px-3 py-2">
+              <select
+                :value="p.is_seen ? 'true' : 'false'"
+                :disabled="savingInline.has(p.id)"
+                class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-28"
+                @change.stop="updateField(p.id, { is_seen: $event.target.value === 'true' })"
+                title="Пометить как просмотрено"
+              >
+                <option value="false">Нет</option>
+                <option value="true">Да</option>
+              </select>
+            </td>
+
+            <!-- отчёт / действия -->
+            <td class="px-3 py-2">
+              <div class="flex items-center gap-2">
+                <button
+                  @click.stop="printReport(p)"
+                  class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                >
+                  Скачать PDF-отчёт
+                </button>
+
+                <template v-if="isAdmin">
+                  <template v-if="editRowId === p.id">
+                    <button
+                      @click.stop="saveEditRow"
+                      class="px-2 py-1 rounded bg-emerald-500 text-white hover:bg-emerald-600"
+                    >
+                      💾
+                    </button>
+                    <button
+                      @click.stop="cancelEditRow"
+                      class="px-2 py-1 rounded bg-gray-300 hover:bg-gray-400"
+                    >
+                      ✖️
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button
+                      @click.stop="startEditRow(p)"
+                      class="px-2 py-1 rounded bg-emerald-400 text-white hover:bg-emerald-500"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      @click.stop="removeRow(p.id)"
+                      class="px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600"
+                    >
+                      🗑
+                    </button>
+                  </template>
+                </template>
+              </div>
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -283,7 +410,8 @@ onMounted(load)
             Закрыть
           </button>
         </div>
-        <div class="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+        <div v-if="photosLoading" class="p-6 text-sm text-gray-500">Загрузка фото…</div>
+        <div v-else class="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
           <a
             v-for="(url, i) in selectedPhotos"
             :key="i"
@@ -292,21 +420,17 @@ onMounted(load)
             rel="noopener"
             class="block"
           >
-            <img :src="url" class="w-full h-48 object-cover rounded-lg border" alt="" />
+            <img :src="url" class="w-full h-48 object-cover rounded-lg border" alt="Фото" />
           </a>
           <p v-if="selectedPhotos.length === 0" class="text-sm text-gray-500">Файлы не найдены</p>
         </div>
       </div>
     </div>
 
-    <!-- шаблон печати -->
+    <!-- печать -->
     <div class="print:block hidden">
       <article v-if="printingProblem" class="p-6">
-        <h1 class="text-2xl font-bold mb-2">
-          Отчёт по эко-проблеме #{{ printingProblem.id }}
-        </h1>
-
-        <!-- статическая карта для печати -->
+        <h1 class="text-2xl font-bold mb-2">Отчёт по эко-проблеме #{{ printingProblem.id }}</h1>
         <img
           v-if="printMapUrl"
           :src="printMapUrl"
@@ -314,15 +438,10 @@ onMounted(load)
           alt="Карта инцидента"
           class="w-full rounded-lg border mb-4"
         />
-
-        <p class="text-sm text-gray-600 mb-4">
-          Координаты: {{ printingProblem.coords }}
-        </p>
+        <p class="text-sm text-gray-600 mb-4">Координаты: {{ printingProblem.coords }}</p>
         <p class="mb-2"><strong>Тип нарушения:</strong> {{ printingProblem.typeName }}</p>
         <p class="mb-2"><strong>Статус проверки:</strong> {{ printingProblem.statusName }}</p>
-        <p class="mt-6 text-xs text-gray-500">
-          Сформировано автоматически в админ-панели
-        </p>
+        <p class="mt-6 text-xs text-gray-500">Сформировано автоматически в админ-панели</p>
       </article>
     </div>
 
@@ -338,8 +457,15 @@ onMounted(load)
 
 <style>
 @media print {
-  .interactive-map { display: none !important; }
-  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { background: white; }
+  .interactive-map {
+    display: none !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body {
+    background: white;
+  }
 }
 </style>
