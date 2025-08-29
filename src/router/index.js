@@ -29,13 +29,13 @@ const routes = [
         path: 'eco-analysis',
         name: 'EcoAnalysis',
         component: EcoAnalysis,
-        meta: { label: 'Анализ Экопроблем', roles: ['ecologist'] },
+        meta: { label: 'Анализ Экопроблем', roles: ['ecologist', 'admin'] },
       },
       {
         path: 'wiki-fill',
         name: 'WikiFill',
         component: WikiFill,
-        meta: { label: 'Заполнение Wiki', roles: ['ecologist'] },
+        meta: { label: 'Заполнение Wiki', roles: ['ecologist', 'admin'] },
       },
       {
         path: 'users',
