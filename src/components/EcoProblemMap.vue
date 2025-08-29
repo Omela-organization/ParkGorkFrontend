@@ -84,7 +84,7 @@ function drawPoints() {
   props.points.forEach((p) => {
     // ВАЖНО: v2.1 ждёт [широта, долгота]
     const pm = new window.ymaps.Placemark(
-      [Number(p.longitude), Number(p.latitude)],
+      [Number(p.latitude), Number(p.longitude)],
       { balloonContentHeader: p.title || `Эко-проблема #${p.id}` },
       { preset: 'islands#redIcon' },
     )
@@ -95,7 +95,7 @@ function drawPoints() {
 
 function focusOn(problem) {
   if (!map || !problem) return
-  map.setCenter([Number(problem.longitude), Number(problem.latitude)], 18, { duration: 300 })
+  map.setCenter([Number(problem.latitude), Number(problem.longitude)], 18, { duration: 300 })
 }
 
 async function init() {
