@@ -6,30 +6,53 @@ import { ecoApi } from '@/api/core'
 import { useAuth } from '@/stores/auth'
 import { YANDEX_MAPS_API_KEY } from '@/utils/settings.js'
 
+/* --------- авторизация / роли --------- */
 const auth = useAuth()
 const isAdmin = computed(() => auth.role === 'admin')
 
+/* --------- состояние данных --------- */
 const loading = ref(false)
 const problems = ref([])
-const statuses = ref([])
-const types = ref([])
 
-const detailsCache = ref(new Map())
-const photosOpen = ref(false)
-const photosLoading = ref(false)
-const selectedPhotos = ref([])
+const statusesRaw = ref([]) // что пришло с бэка
+const typesRaw = ref([])
 
+/* Нормализация списков: приводим к { id, label } */
+function normalizeList(list, preferredNameKey = 'name') {
+  const src = Array.isArray(list) ? list : Array.isArray(list?.results) ? list.results : []
+
+  return src
+    .map((x) => ({
+      id: x.id ?? x.value ?? x.key,
+      label: x[preferredNameKey] ?? x.text ?? x.label ?? (typeof x === 'string' ? x : String(x.id)),
+      _original: x,
+    }))
+    .filter((x) => x.id != null)
+}
+
+const statusOptions = computed(() => normalizeList(statusesRaw.value, 'name'))
+const typeOptions = computed(() => normalizeList(typesRaw.value, 'name'))
+
+const statusLabelById = computed(() =>
+  Object.fromEntries(statusOptions.value.map((s) => [s.id, s.label])),
+)
+const typeLabelById = computed(() =>
+  Object.fromEntries(typeOptions.value.map((t) => [t.id, t.label])),
+)
+
+/* --------- карта / координаты --------- */
 const mapRef = ref(null)
 
 function formatDate(iso) {
   if (!iso) return '—'
-  const d = new Date(iso)
-  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
 }
-const typeNameById = computed(() => Object.fromEntries(types.value.map((t) => [t.id, t.text])))
-const statusNameById = computed(() => Object.fromEntries(statuses.value.map((s) => [s.id, s.text])))
-
 function coordsPair(p) {
+  // ⚠️ сейчас широта лежит в longitude, долгота — в latitude
   const lat = Number(p.longitude)
   const lon = Number(p.latitude)
   return [lat, lon]
@@ -39,7 +62,6 @@ function coordsString(p) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '—'
   return `${lat.toFixed(6)}, ${lon.toFixed(6)}`
 }
-
 function buildYandexLink(lat, lon, zoom = 17) {
   const ll = `${lon.toFixed(6)},${lat.toFixed(6)}`
   const pt = `${lon.toFixed(6)},${lat.toFixed(6)},pm2rdl`
@@ -51,8 +73,14 @@ function buildYandexLink(lat, lon, zoom = 17) {
   return url.toString()
 }
 
+/* --------- копирование ссылки --------- */
 const toast = ref({ show: false, text: '' })
 let toastTimer
+function showToast(t) {
+  toast.value = { show: true, text: t }
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => (toast.value.show = false), 1500)
+}
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text)
@@ -73,11 +101,6 @@ async function copyText(text) {
     }
   }
 }
-function showToast(t) {
-  toast.value = { show: true, text: t }
-  clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value.show = false), 1500)
-}
 async function copyCoordsLink(p) {
   const [lat, lon] = coordsPair(p)
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return
@@ -85,34 +108,43 @@ async function copyCoordsLink(p) {
   showToast(ok ? 'Ссылка на карту скопирована' : 'Не удалось скопировать')
 }
 
+/* --------- представление таблицы --------- */
 const sortedProblems = computed(() =>
   [...problems.value].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
 )
+
 const rows = computed(() =>
   sortedProblems.value.map((p) => ({
     ...p,
     createdAt: formatDate(p.created_at),
-    typeName: typeNameById.value[p.type_incident_id] ?? '—',
-    statusName: statusNameById.value[p.status_id] ?? '—',
+    typeName: typeLabelById.value[p.type_incident_id] ?? '—',
+    statusName: statusLabelById.value[p.status_id] ?? '—',
     coords: coordsString(p),
   })),
 )
 
+/* --------- загрузка --------- */
 async function load() {
   loading.value = true
   try {
     const [ps, ss, ts] = await Promise.all([
       fetchEcoProblems(),
-      fetchStatuses(),
-      fetchTypeIncidents(),
+      fetchStatuses(), // /api/v1/statuses/
+      fetchTypeIncidents(), // /api/v1/type_incidents/
     ])
     problems.value = ps ?? []
-    statuses.value = ss ?? []
-    types.value = ts ?? []
+    statusesRaw.value = ss ?? []
+    typesRaw.value = ts ?? []
   } finally {
     loading.value = false
   }
 }
+
+/* --------- модалка с фото --------- */
+const detailsCache = ref(new Map())
+const photosOpen = ref(false)
+const photosLoading = ref(false)
+const selectedPhotos = ref([])
 
 async function openPhotos(p) {
   photosLoading.value = true
@@ -135,6 +167,7 @@ async function openPhotos(p) {
   }
 }
 
+/* --------- фокус карты --------- */
 function focusOnMap(p) {
   mapRef.value?.focusOn(p)
 }
@@ -182,7 +215,6 @@ async function saveEditRow() {
     type_incident_id: draft.value.type_incident_id,
     status_id: draft.value.status_id,
     is_seen: !!draft.value.is_seen,
-    // назад кладём в «перекрёстные» поля
     longitude: Number.isFinite(lat) ? String(lat) : undefined,
     latitude: Number.isFinite(lon) ? String(lon) : undefined,
   }
@@ -280,7 +312,7 @@ onMounted(load)
                   v-model="draft.type_incident_id"
                   class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-44"
                 >
-                  <option v-for="t in types" :key="t.id" :value="t.id">{{ t.text }}</option>
+                  <option v-for="t in typeOptions" :key="t.id" :value="t.id">{{ t.label }}</option>
                 </select>
               </template>
               <template v-else>
@@ -288,7 +320,6 @@ onMounted(load)
               </template>
             </td>
 
-            <!-- Координаты -->
             <td class="px-3 py-2">
               <template v-if="isAdmin && editRowId === p.id">
                 <div class="flex gap-2">
@@ -326,28 +357,53 @@ onMounted(load)
             </td>
 
             <td class="px-3 py-2">
-              <select
-                :value="p.status_id"
-                :disabled="savingInline.has(p.id)"
-                class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-44"
-                @change.stop="updateField(p.id, { status_id: $event.target.value })"
-                title="Изменить статус"
-              >
-                <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.text }}</option>
-              </select>
+              <template v-if="isAdmin && editRowId === p.id">
+                <select
+                  v-model="draft.status_id"
+                  class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-44"
+                >
+                  <option v-for="s in statusOptions" :key="s.id" :value="s.id">
+                    {{ s.label }}
+                  </option>
+                </select>
+              </template>
+              <template v-else>
+                <select
+                  :value="p.status_id"
+                  :disabled="savingInline.has(p.id)"
+                  class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-44"
+                  @change.stop="updateField(p.id, { status_id: Number($event.target.value) })"
+                  title="Изменить статус"
+                >
+                  <option v-for="s in statusOptions" :key="s.id" :value="s.id">
+                    {{ s.label }}
+                  </option>
+                </select>
+              </template>
             </td>
 
             <td class="px-3 py-2">
-              <select
-                :value="p.is_seen ? 'true' : 'false'"
-                :disabled="savingInline.has(p.id)"
-                class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-28"
-                @change.stop="updateField(p.id, { is_seen: $event.target.value === 'true' })"
-                title="Пометить как просмотрено"
-              >
-                <option value="false">Нет</option>
-                <option value="true">Да</option>
-              </select>
+              <template v-if="isAdmin && editRowId === p.id">
+                <select
+                  v-model="draft.is_seen"
+                  class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-28"
+                >
+                  <option :value="false">Нет</option>
+                  <option :value="true">Да</option>
+                </select>
+              </template>
+              <template v-else>
+                <select
+                  :value="p.is_seen ? 'true' : 'false'"
+                  :disabled="savingInline.has(p.id)"
+                  class="text-sm bg-transparent border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-0 w-28"
+                  @change.stop="updateField(p.id, { is_seen: $event.target.value === 'true' })"
+                  title="Пометить как просмотрено"
+                >
+                  <option value="false">Нет</option>
+                  <option value="true">Да</option>
+                </select>
+              </template>
             </td>
 
             <!-- отчёт / действия -->
