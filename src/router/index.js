@@ -4,7 +4,7 @@ import AuthLayout from '@/layouts/AuthLayout.vue'
 
 import AdminPanel from '@/pages/admin/AdminPanel.vue'
 import EcoAnalysis from '@/pages/EcoAnalysis.vue'
-import WikiFill from '@/pages/WikiFill.vue'
+import WikiPage from '@/pages/WikiPage.vue'
 import UsersPage from '@/pages/Users.vue'
 import NewsEditor from '@/pages/NewsEditor.vue'
 import LoginPage from '@/pages/LoginPage.vue'
@@ -32,9 +32,9 @@ const routes = [
         meta: { label: 'Анализ Экопроблем', roles: ['ecologist', 'admin'] },
       },
       {
-        path: 'wiki-fill',
-        name: 'WikiFill',
-        component: WikiFill,
+        path: '/wiki',
+        name: 'wiki',
+        component: WikiPage,
         meta: { label: 'Заполнение Wiki', roles: ['ecologist', 'admin'] },
       },
       {
